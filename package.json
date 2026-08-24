@@ -1,0 +1,13 @@
+{
+  "name": "aesirmc-bot-panel",
+  "version": "1.0.0",
+  "description": "AesirMC Velocity Proxy Mineflayer AFK Bot & Web Panel for Render",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mineflayer": "^4.20.0"
+  }
+}
