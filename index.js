@@ -1,6 +1,7 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
 const http = require('http');
+const { SocksClient } = require('socks');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,7 +16,12 @@ let CONFIG = {
     port: 25565,
     username: 'BotIsmin',
     password: '',
-    targetServer: 'towny',
+    targetServer: 'asmp',
+    mcVersion: '1.20.4',
+    proxyHost: '',
+    proxyPort: '',
+    proxyUser: '',
+    proxyPass: '',
     reconnectInterval: 8000,
     antiAfkInterval: 180000
 };
@@ -51,15 +57,46 @@ function createBot() {
     cleanUpBot();
 
     botStats.status = 'Proxy Sunucusuna Bağlanılıyor...';
-    log(`${CONFIG.host}:${CONFIG.port} adresine bağlanılıyor (${CONFIG.username})...`);
+    log(`${CONFIG.host}:${CONFIG.port} adresine bağlanılıyor (${CONFIG.username}) - Sürüm: ${CONFIG.mcVersion}...`);
+
+    const botOptions = {
+        host: CONFIG.host,
+        port: CONFIG.port,
+        username: CONFIG.username,
+        version: CONFIG.mcVersion || '1.20.4'
+    };
+
+    // SOCKS5 Proxy Yapılandırması (Varsa aktif eder)
+    if (CONFIG.proxyHost && CONFIG.proxyPort) {
+        log(`SOCKS5 Proxy aktif: ${CONFIG.proxyHost}:${CONFIG.proxyPort}`);
+        botOptions.connect = (client) => {
+            SocksClient.createConnection({
+                proxy: {
+                    host: CONFIG.proxyHost,
+                    port: parseInt(CONFIG.proxyPort),
+                    type: 5,
+                    userId: CONFIG.proxyUser || undefined,
+                    password: CONFIG.proxyPass || undefined
+                },
+                command: 'connect',
+                destination: {
+                    host: CONFIG.host,
+                    port: CONFIG.port
+                }
+            }, (err, info) => {
+                if (err) {
+                    log(`Proxy Bağlantı Hatası: ${err.message}`);
+                    client.emit('error', err);
+                    return;
+                }
+                client.setSocket(info.socket);
+                client.emit('connect');
+            });
+        };
+    }
 
     try {
-        bot = mineflayer.createBot({
-            host: CONFIG.host,
-            port: CONFIG.port,
-            username: CONFIG.username,
-            version: false
-        });
+        bot = mineflayer.createBot(botOptions);
     } catch (err) {
         log(`Bot başlatma hatası: ${err.message}`);
         triggerReconnect('Başlatma Hatası');
@@ -78,7 +115,7 @@ function createBot() {
             }
         }, 2000);
 
-        // 2. Alt Sunucuya Otomatik Geçiş (/server)
+        // 2. Alt Sunucuya Otomatik Geçiş (/gir)
         setTimeout(() => {
             if (bot && CONFIG.targetServer) {
                 switchServer(CONFIG.targetServer);
@@ -155,10 +192,10 @@ function triggerReconnect(reason) {
 function switchServer(serverName) {
     if (bot && serverName) {
         CONFIG.targetServer = serverName;
-        bot.chat(`/server ${serverName}`);
+        bot.chat(`/gir ${serverName}`);
         botStats.currentServer = serverName.toUpperCase();
         botStats.status = `${serverName.toUpperCase()} Sunucusunda AFK`;
-        log(`Alt sunucuya geçiliyor: /server ${serverName}`);
+        log(`Alt sunucuya geçiliyor: /gir ${serverName}`);
     }
 }
 
@@ -189,7 +226,7 @@ app.get('/', (req, res) => {
         .card-title { font-size: 16px; font-weight: 600; color: #38bdf8; margin-bottom: 14px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; display: flex; justify-content: space-between; }
         .stat-item { display: flex; justify-content: space-between; background: #0f172a; padding: 10px; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
         label { display: block; font-size: 12px; color: #94a3b8; margin: 10px 0 4px; }
-        input { width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 10px; border-radius: 6px; font-size: 14px; outline: none; }
+        input, select { width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 10px; border-radius: 6px; font-size: 14px; outline: none; }
         .btn { width: 100%; background: #0284c7; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         .btn-green { background: #16a34a; }
         .btn-red { background: #dc2626; }
@@ -217,8 +254,8 @@ app.get('/', (req, res) => {
         <div class="card">
             <div class="card-title">🚀 Hızlı İşlemler</div>
             <form action="/switch-server" method="POST">
-                <label>Alt Sunucuya Geç (/server)</label>
-                <input type="text" name="serverName" placeholder="towny, survival, boxpvp..." required>
+                <label>Alt Sunucuya Geç (/gir)</label>
+                <input type="text" name="serverName" placeholder="asmp, towny, survival..." required>
                 <button type="submit" class="btn btn-green">Sunucu Değiştir</button>
             </form>
 
@@ -242,8 +279,38 @@ app.get('/', (req, res) => {
                 </div>
                 <div>
                     <label>Hedef Alt Sunucu</label>
-                    <input type="text" name="targetServer" value="${CONFIG.targetServer}" placeholder="towny">
+                    <input type="text" name="targetServer" value="${CONFIG.targetServer}" placeholder="asmp">
                 </div>
+                <div>
+                    <label>Minecraft Sürümü</label>
+                    <select name="mcVersion">
+                        <option value="1.20.4" ${CONFIG.mcVersion === '1.20.4' ? 'selected' : ''}>1.20.4</option>
+                        <option value="1.21.1" ${CONFIG.mcVersion === '1.21.1' ? 'selected' : ''}>1.21.1</option>
+                        <option value="1.20.1" ${CONFIG.mcVersion === '1.20.1' ? 'selected' : ''}>1.20.1</option>
+                        <option value="1.16.5" ${CONFIG.mcVersion === '1.16.5' ? 'selected' : ''}>1.16.5</option>
+                    </select>
+                </div>
+
+                <div style="grid-column: 1 / -1; border-top: 1px solid #1e293b; margin-top: 5px; padding-top: 5px;">
+                    <label style="color: #38bdf8; font-weight: bold;">SOCKS5 Proxy Ayarları (Opsiyonel - IP Engeli İçin)</label>
+                </div>
+                <div>
+                    <label>Proxy IP / Host</label>
+                    <input type="text" name="proxyHost" value="${CONFIG.proxyHost}" placeholder="örn: 185.12.34.56">
+                </div>
+                <div>
+                    <label>Proxy Port</label>
+                    <input type="text" name="proxyPort" value="${CONFIG.proxyPort}" placeholder="örn: 1080">
+                </div>
+                <div>
+                    <label>Proxy Kullanıcı Adı</label>
+                    <input type="text" name="proxyUser" value="${CONFIG.proxyUser}">
+                </div>
+                <div>
+                    <label>Proxy Şifre</label>
+                    <input type="password" name="proxyPass" value="${CONFIG.proxyPass}">
+                </div>
+
                 <div style="grid-column: 1 / -1;">
                     <button type="submit" class="btn">Kaydet ve Başlat</button>
                 </div>
@@ -282,7 +349,12 @@ app.post('/update-config', (req, res) => {
     CONFIG.username = req.body.username;
     CONFIG.password = req.body.password;
     CONFIG.targetServer = req.body.targetServer;
-    log('Ayarlar panellerden güncellendi.');
+    CONFIG.mcVersion = req.body.mcVersion;
+    CONFIG.proxyHost = req.body.proxyHost;
+    CONFIG.proxyPort = req.body.proxyPort;
+    CONFIG.proxyUser = req.body.proxyUser;
+    CONFIG.proxyPass = req.body.proxyPass;
+    log('Ayarlar panelden güncellendi ve yeniden başlatılıyor.');
     createBot();
     res.redirect('/');
 });
